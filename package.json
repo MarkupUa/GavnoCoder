@@ -15,6 +15,10 @@
       {
         "command": "gavno-coder.askGpt",
         "title": "GavnoCoder: Отправить код в GPT"
+      },
+      {
+        "command": "gavno-coder.openChat",
+        "title": "GavnoCoder: Открыть окно чата"
       }
     ]
   },
