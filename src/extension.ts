@@ -1,26 +1,66 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import { Configuration, OpenAIApi } from "openai";
+import * as fs from "fs";
+import * as path from "path";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+const openai = new OpenAIApi(
+  new Configuration({ apiKey: "YOUR_OPENAI_API_KEY" })
+);
+
 export function activate(context: vscode.ExtensionContext) {
+  let disposable = vscode.commands.registerCommand(
+    "extension.analyzeProject",
+    async () => {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders) {
+        vscode.window.showErrorMessage("Откройте папку проекта в VS Code.");
+        return;
+      }
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "gavnocoder" is now active!');
+      const projectPath = workspaceFolders[0].uri.fsPath;
+      const files = getAllFiles(projectPath).filter(
+        (file) => file.endsWith(".js") || file.endsWith(".ts")
+      );
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('gavnocoder.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from GavnoCoder!');
-	});
+      for (const file of files) {
+        const code = fs.readFileSync(file, "utf-8");
+        const response = await openai.createChatCompletion({
+          model: "gpt-4",
+          messages: [
+            {
+              role: "user",
+              content: `Предложи улучшения для следующего кода:\n\n${code}`,
+            },
+          ],
+        });
 
-	context.subscriptions.push(disposable);
+        const newCode = response.data.choices[0].message?.content;
+        if (newCode) {
+          const document = await vscode.workspace.openTextDocument(file);
+          const editor = await vscode.window.showTextDocument(document);
+          const fullRange = new vscode.Range(
+            document.positionAt(0),
+            document.positionAt(code.length)
+          );
+          editor.edit((editBuilder) => {
+            editBuilder.replace(fullRange, newCode);
+          });
+        }
+      }
+    }
+  );
+
+  context.subscriptions.push(disposable);
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+function getAllFiles(dir: string, files: string[] = []): string[] {
+  fs.readdirSync(dir).forEach((file) => {
+    const fullPath = path.join(dir, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      getAllFiles(fullPath, files);
+    } else {
+      files.push(fullPath);
+    }
+  });
+  return files;
+}
