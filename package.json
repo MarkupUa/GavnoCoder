@@ -4,18 +4,17 @@
   "description": "AI agent for coding",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.100.0"
+    "vscode": "^1.80.0"
   },
-  "categories": [
-    "Other"
+  "activationEvents": [
+    "onCommand:gavno-coder.askGpt"
   ],
-  "activationEvents": [],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "gavnocoder.helloWorld",
-        "title": "Hello World"
+        "command": "gavno-coder.askGpt",
+        "title": "GavnoCoder: Отправить код в GPT"
       }
     ]
   },

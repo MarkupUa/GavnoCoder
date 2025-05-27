@@ -1,66 +1,77 @@
 import * as vscode from "vscode";
-import { Configuration, OpenAIApi } from "openai";
-import * as fs from "fs";
-import * as path from "path";
+import OpenAI from "openai";
 
-const openai = new OpenAIApi(
-  new Configuration({ apiKey: "YOUR_OPENAI_API_KEY" })
-);
+// Для безопасности лучше держать ключ в env (или спросить у пользователя)
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "YOUR_OPENAI_API_KEY";
+
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
-    "extension.analyzeProject",
+    "gavno-coder.askGpt",
     async () => {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders) {
-        vscode.window.showErrorMessage("Откройте папку проекта в VS Code.");
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage(
+          "Открой файл и выдели код или текст для отправки в GPT"
+        );
         return;
       }
 
-      const projectPath = workspaceFolders[0].uri.fsPath;
-      const files = getAllFiles(projectPath).filter(
-        (file) => file.endsWith(".js") || file.endsWith(".ts")
-      );
+      const selection = editor.selection;
+      const text =
+        editor.document.getText(selection) || editor.document.getText();
 
-      for (const file of files) {
-        const code = fs.readFileSync(file, "utf-8");
-        const response = await openai.createChatCompletion({
-          model: "gpt-4",
-          messages: [
-            {
-              role: "user",
-              content: `Предложи улучшения для следующего кода:\n\n${code}`,
-            },
-          ],
-        });
-
-        const newCode = response.data.choices[0].message?.content;
-        if (newCode) {
-          const document = await vscode.workspace.openTextDocument(file);
-          const editor = await vscode.window.showTextDocument(document);
-          const fullRange = new vscode.Range(
-            document.positionAt(0),
-            document.positionAt(code.length)
-          );
-          editor.edit((editBuilder) => {
-            editBuilder.replace(fullRange, newCode);
-          });
-        }
+      if (!text) {
+        vscode.window.showInformationMessage(
+          "Выдели код или текст для отправки в GPT"
+        );
+        return;
       }
+
+      // Запрос к OpenAI
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "GPT думает...",
+          cancellable: false,
+        },
+        async () => {
+          try {
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4o", // Можно заменить на gpt-4 или gpt-3.5-turbo
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "Ты ассистент по фронтенду и AI. Пиши чисто, по стандарту, давай краткие пояснения, если требуется.",
+                },
+                { role: "user", content: text },
+              ],
+              max_tokens: 1024,
+              temperature: 0.2,
+            });
+
+            const response =
+              completion.choices[0]?.message?.content || "Нет ответа от GPT";
+
+            // Показываем результат в отдельном окне
+            const doc = await vscode.workspace.openTextDocument({
+              content: response,
+              language: editor.document.languageId,
+            });
+            vscode.window.showTextDocument(doc, { preview: false });
+          } catch (err: any) {
+            vscode.window.showErrorMessage(
+              `Ошибка OpenAI: ${err.message || err}`
+            );
+          }
+        }
+      );
     }
   );
 
   context.subscriptions.push(disposable);
 }
 
-function getAllFiles(dir: string, files: string[] = []): string[] {
-  fs.readdirSync(dir).forEach((file) => {
-    const fullPath = path.join(dir, file);
-    if (fs.statSync(fullPath).isDirectory()) {
-      getAllFiles(fullPath, files);
-    } else {
-      files.push(fullPath);
-    }
-  });
-  return files;
-}
+export function deactivate() {}
